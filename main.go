@@ -28,6 +28,14 @@ func createHandlerOrders(w http.ResponseWriter, r *http.Request) {
             http.Error(w, "errors", http.StatusBadRequest)
             return
         }
+        if order.Product == "" {
+            http.Error(w, "product is required", http.StatusBadRequest)
+            return
+        }
+        if order.Quantity <= 0 {
+            http.Error(w, "quantity must be positive", http.StatusBadRequest)
+            return
+        }
 
         mu.Lock()
         defer mu.Unlock()
@@ -36,8 +44,13 @@ func createHandlerOrders(w http.ResponseWriter, r *http.Request) {
         nextID++
         orders[order.ID] = order
 
-        fmt.Fprintf(w, "Create a new order\n  ID: %d\n  Product: %s (quantity: %d)\n", 
-        order.ID, order.Product, order.Quantity)
+        w.Header().Set("Content-Type", "application/json")
+        w.WriteHeader(http.StatusCreated)
+        errJs := json.NewEncoder(w).Encode(order)
+        if errJs != nil {
+            http.Error(w, "json encode errors", http.StatusBadRequest)
+            return
+        }
 
     case http.MethodGet:
         mu.Lock()
@@ -49,7 +62,7 @@ func createHandlerOrders(w http.ResponseWriter, r *http.Request) {
         }
 
         w.Header().Set("Content-Type", "application/json")
-        err := json.NewEncoder(w).Encode(&resOrder)
+        err := json.NewEncoder(w).Encode(resOrder)
         if err != nil {
             http.Error(w, "errors json encoding", http.StatusBadRequest)
             return
@@ -103,10 +116,63 @@ func deleteHandler(w http.ResponseWriter, r *http.Request) {
     fmt.Fprintf(w, "Order %d delete\n", id)
 }
 
+func putHandler(w http.ResponseWriter, r *http.Request) {
+    var order Order
+    id, err := strconv.Atoi(r.PathValue("id"))
+    if err != nil {
+        http.Error(w, "Errors get id", http.StatusBadRequest)
+        return
+    }
+
+    errDecode := json.NewDecoder(r.Body).Decode(&order)
+    if errDecode != nil {
+        http.Error(w, "json decode errors", http.StatusBadRequest)
+        return
+    }
+
+    if  order.Product == "" {
+        http.Error(w, "product is required", http.StatusBadRequest)
+        return
+    }
+    if order.Quantity <= 0 {
+        http.Error(w, "quantity must be positive", http.StatusBadRequest)
+        return
+    }
+
+    mu.Lock()
+    defer mu.Unlock()
+
+    order.ID = id
+    _, found := orders[id]
+    if !found {
+        http.Error(w, "not found order with id", http.StatusNotFound)
+        return
+    }
+    orders[id] = order
+
+    w.Header().Set("Content-Type", "application/json")
+    errJsPut := json.NewEncoder(w).Encode(order)
+    if errJsPut != nil {
+        http.Error(w, "json encode errors", http.StatusBadRequest)
+        return
+    } 
+}
+
+func isValidOrder(product string, quantity int) bool {
+    if product == "" {
+        return false
+    }
+    if quantity <= 0 {
+        return false
+    }
+    return true
+}
+
 func main() {
 	http.HandleFunc("/orders", createHandlerOrders)
     http.HandleFunc("GET /orders/{id}", pathHandler)
     http.HandleFunc("DELETE /orders/{id}", deleteHandler)
+    http.HandleFunc("PUT /orders/{id}", putHandler) 
 	err := http.ListenAndServe(":8080", nil)
 	if err != nil {
 		fmt.Println("Errors server", err)
