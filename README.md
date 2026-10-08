@@ -1,17 +1,17 @@
 # Order API
 
-Простой REST API для управления заказами на Go (`net/http`, без сторонних фреймворков).
+Простой REST API для управления заказами на Go (`net/http`, без сторонних фреймворков).  
 Данные хранятся в памяти (map), без базы данных. Учебный проект для отработки HTTP, JSON и конкурентности в Go.
 
 ## Возможности
 
-| Метод    | Путь             | Описание                    |
-|----------|------------------|-----------------------------|
-| `POST`   | `/orders`        | Создать заказ               |
-| `GET`    | `/orders`        | Получить список всех заказов|
-| `GET`    | `/orders/{id}`   | Получить заказ по id        |
-| `PUT`    | `/orders/{id}`   | Обновить заказ целиком      |
-| `DELETE` | `/orders/{id}`   | Удалить заказ               |
+| Метод    | Путь             | Описание                     |
+|----------|------------------|------------------------------|
+| `POST`   | `/orders`        | Создать заказ                |
+| `GET`    | `/orders`        | Получить список всех заказов |
+| `GET`    | `/orders/{id}`   | Получить заказ по id         |
+| `PUT`    | `/orders/{id}`   | Обновить заказ целиком       |
+| `DELETE` | `/orders/{id}`   | Удалить заказ                |
 
 ## Валидация
 
@@ -37,8 +37,19 @@
 - `net/http`: маршрутизация с указанием метода прямо в пути (Go 1.22+)
 - `encoding/json`: декодирование запросов и кодирование ответов
 - `sync.Mutex`: защита общей map от гонки данных при параллельных запросах
-- path-параметры (`{id}`) и обработка ошибок с корректными HTTP-статусами
+- middleware для логирования запросов (метод, путь, время выполнения)
+- path-параметры (`{id}`) и корректные HTTP-статусы
 - тесты на стандартном пакете `testing`
+
+## Middleware
+
+Все запросы логируются через `logging`. В консоль пишется метод, путь и время выполнения:
+
+```
+POST /orders took 1.2ms
+GET /orders took 245µs
+PUT /orders/1 took 800µs
+```
 
 ## Запуск
 
@@ -58,7 +69,7 @@ go test
 
 Создать заказ:
 ```bash
-curl -X POST http://localhost:8080/orders -d '{"product":"Ноутбук","quantity":2}'
+curl -X POST http://localhost:8080/orders -d '{"product":"Laptop","quantity":2}'
 ```
 
 Получить все заказы:
@@ -73,7 +84,7 @@ curl http://localhost:8080/orders/1
 
 Обновить заказ:
 ```bash
-curl -X PUT http://localhost:8080/orders/1 -d '{"product":"Клавиатура","quantity":5}'
+curl -X PUT http://localhost:8080/orders/1 -d '{"product":"Keyboard","quantity":5}'
 ```
 
 Удалить заказ:
@@ -81,8 +92,11 @@ curl -X PUT http://localhost:8080/orders/1 -d '{"product":"Клавиатура"
 curl -X DELETE http://localhost:8080/orders/1
 ```
 
-> Если вы на Windows и используете PowerShell, вызывайте `curl.exe` вместо `curl`
-> и экранируйте кавычки в JSON: `'{\"product\":\"Ноутбук\",\"quantity\":2}'`.
+> **Windows / PowerShell:** вместо `curl` используйте `curl.exe` или `Invoke-RestMethod`.
+> Пример:
+> ```powershell
+> Invoke-RestMethod -Uri http://localhost:8080/orders -Method POST -Body '{"product":"Laptop","quantity":2}' -ContentType "application/json"
+> ```
 
 ## Требования
 
@@ -91,4 +105,5 @@ Go 1.22 или новее (используется синтаксис марш�
 ## Что можно улучшить
 
 - сохранение заказов в файл или базу данных, чтобы они не терялись при перезапуске
-- тесты на HTTP-обработчики через `net/http/httptest`
+- CORS-заголовки для фронтенда
+- авторизация (JWT или API-ключ)

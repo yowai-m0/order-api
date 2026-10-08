@@ -6,6 +6,7 @@ import (
 	"net/http"
 	"strconv"
 	"sync"
+	"time"
 )
 
 var nextID int = 1
@@ -19,57 +20,56 @@ type Order struct {
 	Quantity int    `json:"quantity"`
 }
 
-func createHandlerOrders(w http.ResponseWriter, r *http.Request) {
+func logging(next http.Handler) http.Handler {
+    return http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+        start := time.Now()
+        next.ServeHTTP(w, r)
+        fmt.Println(r.Method, r.URL.Path, "took", time.Since(start))
+    })
+}
+
+func postHandler(w http.ResponseWriter, r *http.Request) {
     var order Order
-    switch r.Method {
-    case http.MethodPost:
-        err := json.NewDecoder(r.Body).Decode(&order)
-        if err != nil {
-            http.Error(w, "errors", http.StatusBadRequest)
-            return
-        }
-        if order.Product == "" {
-            http.Error(w, "product is required", http.StatusBadRequest)
-            return
-        }
-        if order.Quantity <= 0 {
-            http.Error(w, "quantity must be positive", http.StatusBadRequest)
-            return
-        }
+    err := json.NewDecoder(r.Body).Decode(&order)
+    if err != nil {
+        http.Error(w, "errors", http.StatusBadRequest)
+        return
+    }
+    if !isValidOrder(order.Product, order.Quantity) {
+        http.Error(w, "invalid order", http.StatusBadRequest)
+        return
+    }
 
-        mu.Lock()
-        defer mu.Unlock()
+    mu.Lock()
+    defer mu.Unlock()
 
-        order.ID = nextID
-        nextID++
-        orders[order.ID] = order
+    order.ID = nextID
+    nextID++
+    orders[order.ID] = order
 
-        w.Header().Set("Content-Type", "application/json")
-        w.WriteHeader(http.StatusCreated)
-        errJs := json.NewEncoder(w).Encode(order)
-        if errJs != nil {
-            http.Error(w, "json encode errors", http.StatusBadRequest)
-            return
-        }
+    w.Header().Set("Content-Type", "application/json")
+    w.WriteHeader(http.StatusCreated)
+    errJs := json.NewEncoder(w).Encode(order)
+    if errJs != nil {
+        http.Error(w, "json encode errors", http.StatusBadRequest)
+        return
+    }
+}
 
-    case http.MethodGet:
-        mu.Lock()
-        defer mu.Unlock()
+func getHandler(w http.ResponseWriter, r *http.Request) {
+    mu.Lock()
+    defer mu.Unlock()
 
-        var resOrder []Order
-        for _, ord := range orders {
-            resOrder = append(resOrder, ord)
-        }
+    var resOrder []Order
+    for _, ord := range orders {
+        resOrder = append(resOrder, ord)
+    }
 
-        w.Header().Set("Content-Type", "application/json")
-        err := json.NewEncoder(w).Encode(resOrder)
-        if err != nil {
-            http.Error(w, "errors json encoding", http.StatusBadRequest)
-            return
-        }
-
-    default:
-        http.Error(w, "метод не поддерживается", http.StatusMethodNotAllowed)
+    w.Header().Set("Content-Type", "application/json")
+    err := json.NewEncoder(w).Encode(resOrder)
+    if err != nil {
+        http.Error(w, "errors json encoding", http.StatusBadRequest)
+        return
     }
 }
 
@@ -130,12 +130,8 @@ func putHandler(w http.ResponseWriter, r *http.Request) {
         return
     }
 
-    if  order.Product == "" {
-        http.Error(w, "product is required", http.StatusBadRequest)
-        return
-    }
-    if order.Quantity <= 0 {
-        http.Error(w, "quantity must be positive", http.StatusBadRequest)
+    if !isValidOrder(order.Product, order.Quantity) {
+        http.Error(w, "invalid order", http.StatusBadRequest)
         return
     }
 
@@ -169,11 +165,13 @@ func isValidOrder(product string, quantity int) bool {
 }
 
 func main() {
-	http.HandleFunc("/orders", createHandlerOrders)
-    http.HandleFunc("GET /orders/{id}", pathHandler)
-    http.HandleFunc("DELETE /orders/{id}", deleteHandler)
-    http.HandleFunc("PUT /orders/{id}", putHandler) 
-	err := http.ListenAndServe(":8080", nil)
+    mux := http.NewServeMux()
+	mux.HandleFunc("POST /orders", postHandler)
+    mux.HandleFunc("GET /orders", getHandler)
+    mux.HandleFunc("GET /orders/{id}", pathHandler)
+    mux.HandleFunc("DELETE /orders/{id}", deleteHandler)
+    mux.HandleFunc("PUT /orders/{id}", putHandler)
+	err := http.ListenAndServe(":8080", logging(mux))
 	if err != nil {
 		fmt.Println("Errors server", err)
 		return
